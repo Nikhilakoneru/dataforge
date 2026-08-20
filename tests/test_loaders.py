@@ -30,3 +30,11 @@ def test_load_csv_empty_data_returns_empty_list(tmp_path):
     rows = load_csv(str(csv_file))
 
     assert rows == []
+
+
+def test_load_csv_invalid_encoding_raises_loader_error(tmp_path):
+    bad_file = tmp_path / "bad_encoding.csv"
+    bad_file.write_bytes(b"name,age\n\xff\xfe,30\n")  # invalid UTF-8 bytes
+
+    with pytest.raises(LoaderError):
+        load_csv(str(bad_file))
