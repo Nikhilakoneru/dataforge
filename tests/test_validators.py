@@ -3,11 +3,13 @@ from hypothesis import strategies as st
 
 from dataforge.rules import Rule
 from dataforge.validators import (
+    VALIDATORS,
     check_allowed,
     check_pattern,
     check_range,
     check_required,
     check_type,
+    validate_row,
 )
 
 
@@ -162,3 +164,35 @@ def test_any_listed_value_passes_allowed(value):
 def test_integers_always_pass_integer_type_check(value):
     rule = Rule(field="n", type="integer")
     assert check_type({"n": str(value)}, rule) == []
+
+def test_validate_row_returns_no_errors_for_valid_row():
+    rules = [
+        Rule(field="name", type="string", required=True),
+        Rule(field="age", type="integer", min=0, max=120),
+    ]
+    row = {"name": "Alice", "age": "30"}
+    assert validate_row(row, rules) == []
+
+
+def test_validate_row_collects_errors_across_rules():
+    rules = [
+        Rule(field="name", required=True),
+        Rule(field="age", type="integer"),
+    ]
+    row = {"name": "", "age": "abc"}
+    assert len(validate_row(row, rules)) == 2
+
+
+def test_validate_row_collects_multiple_errors_for_one_field():
+    rules = [Rule(field="age", min=50, max=10)]
+    row = {"age": "30"}
+    assert len(validate_row(row, rules)) == 2
+
+
+def test_validate_row_with_no_rules_returns_no_errors():
+    assert validate_row({"anything": "here"}, []) == []
+
+
+def test_adding_a_validator_requires_only_registry_change():
+    # If this list grows, only VALIDATORS should have needed editing.
+    assert len(VALIDATORS) == 5
