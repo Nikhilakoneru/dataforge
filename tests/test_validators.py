@@ -1,5 +1,14 @@
+from hypothesis import given
+from hypothesis import strategies as st
+
 from dataforge.rules import Rule
-from dataforge.validators import check_required, check_type
+from dataforge.validators import (
+    check_allowed,
+    check_pattern,
+    check_range,
+    check_required,
+    check_type,
+)
 
 
 def test_required_passes_when_value_present():
@@ -65,3 +74,91 @@ def test_type_skips_empty_value():
 def test_type_skipped_when_no_type_specified():
     rule = Rule(field="age")
     assert check_type({"age": "whatever"}, rule) == []
+
+def test_range_passes_within_bounds():
+    rule = Rule(field="age", type="integer", min=0, max=120)
+    assert check_range({"age": "50"}, rule) == []
+
+
+def test_range_fails_below_min():
+    rule = Rule(field="age", type="integer", min=18)
+    assert len(check_range({"age": "10"}, rule)) == 1
+
+
+def test_range_fails_above_max():
+    rule = Rule(field="age", type="integer", max=120)
+    assert len(check_range({"age": "200"}, rule)) == 1
+
+
+def test_range_reports_both_bounds_separately():
+    rule = Rule(field="age", min=10, max=20)
+    assert len(check_range({"age": "5"}, rule)) == 1
+
+
+def test_range_skips_when_no_bounds():
+    rule = Rule(field="age", type="integer")
+    assert check_range({"age": "999"}, rule) == []
+
+
+def test_range_skips_non_numeric_when_type_declared():
+    rule = Rule(field="age", type="integer", min=0)
+    assert check_range({"age": "abc"}, rule) == []
+
+
+def test_range_reports_non_numeric_when_no_type_declared():
+    rule = Rule(field="age", min=0)
+    assert len(check_range({"age": "abc"}, rule)) == 1
+
+
+def test_pattern_passes_on_match():
+    rule = Rule(field="code", pattern=r"^[A-Z]{3}$")
+    assert check_pattern({"code": "ABC"}, rule) == []
+
+
+def test_pattern_fails_on_mismatch():
+    rule = Rule(field="code", pattern=r"^[A-Z]{3}$")
+    assert len(check_pattern({"code": "abc1"}, rule)) == 1
+
+
+def test_pattern_skips_when_not_set():
+    rule = Rule(field="code")
+    assert check_pattern({"code": "anything"}, rule) == []
+
+
+def test_allowed_passes_for_listed_value():
+    rule = Rule(field="status", allowed=["active", "inactive"])
+    assert check_allowed({"status": "active"}, rule) == []
+
+
+def test_allowed_fails_for_unlisted_value():
+    rule = Rule(field="status", allowed=["active", "inactive"])
+    assert len(check_allowed({"status": "pending"}, rule)) == 1
+
+
+def test_allowed_is_case_sensitive():
+    rule = Rule(field="status", allowed=["active"])
+    assert len(check_allowed({"status": "ACTIVE"}, rule)) == 1
+
+
+@given(st.integers(min_value=0, max_value=120))
+def test_any_integer_within_bounds_passes_range(value):
+    rule = Rule(field="age", type="integer", min=0, max=120)
+    assert check_range({"age": str(value)}, rule) == []
+
+
+@given(st.integers(min_value=121, max_value=10000))
+def test_any_integer_above_max_fails_range(value):
+    rule = Rule(field="age", type="integer", max=120)
+    assert len(check_range({"age": str(value)}, rule)) == 1
+
+
+@given(st.sampled_from(["active", "inactive", "pending"]))
+def test_any_listed_value_passes_allowed(value):
+    rule = Rule(field="status", allowed=["active", "inactive", "pending"])
+    assert check_allowed({"status": value}, rule) == []
+
+
+@given(st.integers())
+def test_integers_always_pass_integer_type_check(value):
+    rule = Rule(field="n", type="integer")
+    assert check_type({"n": str(value)}, rule) == []

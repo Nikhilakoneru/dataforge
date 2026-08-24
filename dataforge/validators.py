@@ -1,3 +1,5 @@
+import re
+
 from dataforge.rules import Rule
 
 BOOL_VALUES = {"true", "false", "yes", "no", "1", "0"}
@@ -34,4 +36,43 @@ def check_type(row: dict[str, str], rule: Rule) -> list[str]:
         return [f"{rule.field} should be true/false, got '{value}'"]
     # "string" accepts anything that isn't empty
 
+    return []
+def check_range(row: dict[str, str], rule: Rule) -> list[str]:
+    if (rule.min is None and rule.max is None) or is_empty(row, rule.field):
+        return []
+
+    value = row[rule.field].strip()
+    try:
+        number = float(value)
+    except ValueError:
+        # check_type already reports this if a type was declared
+        if rule.type is None:
+            return [f"{rule.field} should be a number to check its range, got '{value}'"]
+        return []
+
+    errors = []
+    if rule.min is not None and number < rule.min:
+        errors.append(f"{rule.field} should be at least {rule.min}, got {value}")
+    if rule.max is not None and number > rule.max:
+        errors.append(f"{rule.field} should be at most {rule.max}, got {value}")
+    return errors
+
+
+def check_pattern(row: dict[str, str], rule: Rule) -> list[str]:
+    if rule.pattern is None or is_empty(row, rule.field):
+        return []
+
+    value = row[rule.field].strip()
+    if re.search(rule.pattern, value) is None:
+        return [f"{rule.field} doesn't match pattern {rule.pattern}, got '{value}'"]
+    return []
+
+
+def check_allowed(row: dict[str, str], rule: Rule) -> list[str]:
+    if rule.allowed is None or is_empty(row, rule.field):
+        return []
+
+    value = row[rule.field].strip()
+    if value not in rule.allowed:
+        return [f"{rule.field} should be one of {rule.allowed}, got '{value}'"]
     return []
