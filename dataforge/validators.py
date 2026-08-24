@@ -76,3 +76,22 @@ def check_allowed(row: dict[str, str], rule: Rule) -> list[str]:
     if value not in rule.allowed:
         return [f"{rule.field} should be one of {rule.allowed}, got '{value}'"]
     return []
+
+# Order matters: required first (a missing value makes the rest moot),
+# then type, then the checks that assume a well-formed value.
+VALIDATORS = [
+    check_required,
+    check_type,
+    check_range,
+    check_pattern,
+    check_allowed,
+]
+
+
+def validate_row(row: dict[str, str], rules: list[Rule]) -> list[str]:
+    """Run every validator against every rule and return all errors found."""
+    errors = []
+    for rule in rules:
+        for validator in VALIDATORS:
+            errors.extend(validator(row, rule))
+    return errors
