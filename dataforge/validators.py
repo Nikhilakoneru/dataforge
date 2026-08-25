@@ -37,6 +37,8 @@ def check_type(row: dict[str, str], rule: Rule) -> list[str]:
     # "string" accepts anything that isn't empty
 
     return []
+
+
 def check_range(row: dict[str, str], rule: Rule) -> list[str]:
     if (rule.min is None and rule.max is None) or is_empty(row, rule.field):
         return []
@@ -47,7 +49,9 @@ def check_range(row: dict[str, str], rule: Rule) -> list[str]:
     except ValueError:
         # check_type already reports this if a type was declared
         if rule.type is None:
-            return [f"{rule.field} should be a number to check its range, got '{value}'"]
+            return [
+                f"{rule.field} should be a number to check its range, got '{value}'"
+            ]
         return []
 
     errors = []
@@ -77,6 +81,7 @@ def check_allowed(row: dict[str, str], rule: Rule) -> list[str]:
         return [f"{rule.field} should be one of {rule.allowed}, got '{value}'"]
     return []
 
+
 # Order matters: required first (a missing value makes the rest moot),
 # then type, then the checks that assume a well-formed value.
 VALIDATORS = [
@@ -86,6 +91,26 @@ VALIDATORS = [
     check_pattern,
     check_allowed,
 ]
+
+
+def missing_rule_fields(header: list[str], rules: list[Rule]) -> list[str]:
+    """Return every rule field that isn't a column in the CSV header.
+
+    This is the one check that inspects the rule set rather than a row,
+    and it exists because `is_empty` cannot tell a missing column from a
+    blank cell. Without it, a rule naming a column that isn't there
+    skips every check and the file is reported as valid — DataForge
+    claiming success for a rule it never applied, which is worse than
+    any failure it could report instead.
+
+    Names come back in rule order, without duplicates.
+    """
+    columns = set(header)
+    missing: list[str] = []
+    for rule in rules:
+        if rule.field not in columns and rule.field not in missing:
+            missing.append(rule.field)
+    return missing
 
 
 def validate_row(row: dict[str, str], rules: list[Rule]) -> list[str]:

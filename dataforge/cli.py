@@ -5,7 +5,8 @@ text output:
 
     0  every row passed
     1  the file loaded fine but the data broke the rules
-    2  DataForge couldn't run at all (bad path, unreadable rules file)
+    2  DataForge couldn't run at all — bad path, unreadable rules file,
+       or rules naming columns the CSV doesn't have
 
 Keeping 1 and 2 apart matters: "your data is wrong" and "your setup is
 wrong" need different reactions from whoever is watching the pipeline.
@@ -17,9 +18,10 @@ import click
 
 from dataforge import __version__
 from dataforge.exceptions import DataForgeError
-from dataforge.loaders import load_csv
+from dataforge.loaders import load_csv, read_header
 from dataforge.report import build_report, format_json, format_text
 from dataforge.rules import load_rules
+from dataforge.validators import missing_rule_fields
 
 EXIT_INVALID_DATA = 1
 EXIT_CANNOT_RUN = 2
@@ -87,12 +89,24 @@ def validate(
     """Check CSV_FILE against a rules file."""
     try:
         rules = load_rules(rules_path)
+        header = read_header(csv_path)
         rows = load_csv(csv_path)
     except DataForgeError as e:
         # Every failure in the loader and the parser layer means we
         # never got as far as looking at the data, so they all collapse
         # into the same "couldn't run" exit code.
         raise CliError(str(e)) from e
+
+    # Refuse to run rather than validate against a header that doesn't
+    # have the columns the rules talk about. Those rules would skip
+    # every check and the file would come back clean, which is the one
+    # outcome a validator must never produce by accident.
+    missing = missing_rule_fields(header, rules)
+    if missing:
+        raise CliError(
+            f"{rules_path} has rules for columns that are not in "
+            f"{csv_path}: {', '.join(missing)}"
+        )
 
     report = build_report(rows, rules)
 

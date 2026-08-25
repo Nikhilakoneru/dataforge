@@ -9,6 +9,7 @@ from dataforge.validators import (
     check_range,
     check_required,
     check_type,
+    missing_rule_fields,
     validate_row,
 )
 
@@ -76,6 +77,7 @@ def test_type_skips_empty_value():
 def test_type_skipped_when_no_type_specified():
     rule = Rule(field="age")
     assert check_type({"age": "whatever"}, rule) == []
+
 
 def test_range_passes_within_bounds():
     rule = Rule(field="age", type="integer", min=0, max=120)
@@ -165,6 +167,7 @@ def test_integers_always_pass_integer_type_check(value):
     rule = Rule(field="n", type="integer")
     assert check_type({"n": str(value)}, rule) == []
 
+
 def test_validate_row_returns_no_errors_for_valid_row():
     rules = [
         Rule(field="name", type="string", required=True),
@@ -196,3 +199,39 @@ def test_validate_row_with_no_rules_returns_no_errors():
 def test_adding_a_validator_requires_only_registry_change():
     # If this list grows, only VALIDATORS should have needed editing.
     assert len(VALIDATORS) == 5
+
+
+def test_missing_rule_fields_returns_nothing_when_all_present():
+    rules = [Rule(field="name"), Rule(field="age")]
+
+    assert missing_rule_fields(["name", "age"], rules) == []
+
+
+def test_missing_rule_fields_ignores_extra_csv_columns():
+    rules = [Rule(field="name")]
+
+    assert missing_rule_fields(["name", "age", "city"], rules) == []
+
+
+def test_missing_rule_fields_finds_a_typo():
+    rules = [Rule(field="naem", type="integer")]
+
+    assert missing_rule_fields(["name", "age"], rules) == ["naem"]
+
+
+def test_missing_rule_fields_reports_all_of_them_in_rule_order():
+    rules = [Rule(field="zzz"), Rule(field="name"), Rule(field="aaa")]
+
+    assert missing_rule_fields(["name"], rules) == ["zzz", "aaa"]
+
+
+def test_missing_rule_fields_does_not_repeat_a_name():
+    rules = [Rule(field="naem", type="string"), Rule(field="naem", min=0)]
+
+    assert missing_rule_fields(["name"], rules) == ["naem"]
+
+
+def test_missing_rule_fields_treats_empty_header_as_everything_missing():
+    rules = [Rule(field="name"), Rule(field="age")]
+
+    assert missing_rule_fields([], rules) == ["name", "age"]
