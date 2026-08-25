@@ -140,3 +140,87 @@ def test_help_lists_the_validate_command(runner):
     result = runner.invoke(main, ["--help"])
     assert result.exit_code == 0
     assert "validate" in result.stdout
+
+
+# --- regression: a rule naming a column the CSV doesn't have -------------
+# Before this was fixed, these rules skipped every check and the file was
+# reported as valid with exit code 0. Reporting success for a rule that
+# was never applied is the one result a validator must never produce.
+
+TYPO_RULES = """
+rules:
+  - field: naem
+    type: integer
+    min: 0
+    max: 10
+"""
+
+
+def test_rule_naming_an_unknown_column_does_not_report_success(runner, tmp_path):
+    csv_path = write_csv(tmp_path, VALID_CSV)
+    rules_path = tmp_path / "typo.yaml"
+    rules_path.write_text(TYPO_RULES, encoding="utf-8")
+
+    result = runner.invoke(main, ["validate", csv_path, "--rules", str(rules_path)])
+
+    assert result.exit_code == 2
+    assert "no errors" not in result.stdout
+    assert "naem" in result.stderr
+
+
+def test_unknown_column_is_reported_even_with_quiet(runner, tmp_path):
+    csv_path = write_csv(tmp_path, VALID_CSV)
+    rules_path = tmp_path / "typo.yaml"
+    rules_path.write_text(TYPO_RULES, encoding="utf-8")
+
+    result = runner.invoke(
+        main, ["validate", csv_path, "--rules", str(rules_path), "--quiet"]
+    )
+
+    assert result.exit_code == 2
+    assert "naem" in result.stderr
+
+
+def test_unknown_column_message_lists_every_missing_name(runner, tmp_path):
+    csv_path = write_csv(tmp_path, VALID_CSV)
+    rules_path = tmp_path / "two_typos.yaml"
+    rules_path.write_text("rules:\n  - field: naem\n  - field: aeg\n", encoding="utf-8")
+
+    result = runner.invoke(main, ["validate", csv_path, "--rules", str(rules_path)])
+
+    assert result.exit_code == 2
+    assert "naem" in result.stderr
+    assert "aeg" in result.stderr
+
+
+def test_unknown_column_fails_in_json_mode_too(runner, tmp_path):
+    csv_path = write_csv(tmp_path, VALID_CSV)
+    rules_path = tmp_path / "typo.yaml"
+    rules_path.write_text(TYPO_RULES, encoding="utf-8")
+
+    result = runner.invoke(
+        main,
+        ["validate", csv_path, "--rules", str(rules_path), "-f", "json"],
+    )
+
+    # no JSON claiming the file is valid should reach stdout
+    assert result.exit_code == 2
+    assert result.stdout == ""
+
+
+def test_header_only_csv_with_matching_rules_still_passes(runner, tmp_path, rules_file):
+    csv_path = write_csv(tmp_path, "name,age\n")
+
+    result = runner.invoke(main, ["validate", csv_path, "--rules", rules_file])
+
+    assert result.exit_code == 0
+    assert "0 rows checked, no errors" in result.stdout
+
+
+def test_completely_empty_csv_does_not_report_success(runner, tmp_path, rules_file):
+    csv_path = write_csv(tmp_path, "")
+
+    result = runner.invoke(main, ["validate", csv_path, "--rules", rules_file])
+
+    assert result.exit_code == 2
+    assert "no errors" not in result.stdout

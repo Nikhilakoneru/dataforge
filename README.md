@@ -36,11 +36,13 @@ Supported keys:
 | `pattern` | Regular expression the value must match |
 | `allowed` | List of allowed values |
 
-There are two design decisions worth mentioning.
+There are three design decisions worth mentioning.
 
 If a key is misspelled (for example, `requird`), DataForge raises an error instead of silently ignoring it. I felt it was better to fail immediately than let someone think a validation rule was running when it actually wasn't.
 
 An empty rules file also raises an error. Reporting that a file is "valid" when no validation rules were executed didn't seem useful, so I chose to treat that as a configuration error.
+
+For the same reason, if a rule names a column that isn't in the CSV header, DataForge refuses to run instead of validating. This one was actually a bug I found while reviewing the CLI. A missing column looked identical to a blank cell internally, so a typo like `field: naem` skipped every check and the file came back clean. A validator that quietly stops validating but still reports success is worse than one that crashes, so it now fails with exit code 2 and names the columns it couldn't find.
 
 ---
 
@@ -99,7 +101,7 @@ Using `--format json` produces the same validation results as structured JSON, m
 | `1` | Validation completed, but the data failed one or more rules |
 | `2` | DataForge couldn't run because of a setup or configuration problem |
 
-Exit codes **1** and **2** are intentionally different. Exit code **1** means the CSV data failed validation, while exit code **2** means DataForge couldn't run at all (for example, because the rules file couldn't be loaded). Keeping them separate makes it easier for scripts and CI pipelines to handle each situation appropriately.
+Exit codes **1** and **2** are intentionally different. Exit code **1** means the CSV data failed validation, while exit code **2** means DataForge couldn't run at all (for example, because the rules file couldn't be loaded, or because a rule referred to a column the CSV doesn't have). Keeping them separate makes it easier for scripts and CI pipelines to handle each situation appropriately.
 
 Validation results are written to **stdout**. If DataForge can't run, the error message is written to **stderr** instead.
 
