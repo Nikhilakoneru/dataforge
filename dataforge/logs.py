@@ -44,9 +44,9 @@ class JsonFormatter(logging.Formatter):
         payload: dict[str, Any] = {
             # UTC, so lines from different machines can be interleaved
             # without having to guess anyone's timezone.
-            "timestamp": datetime.fromtimestamp(
-                record.created, tz=UTC
-            ).isoformat(timespec="milliseconds"),
+            "timestamp": datetime.fromtimestamp(record.created, tz=UTC).isoformat(
+                timespec="milliseconds"
+            ),
             "level": record.levelname.lower(),
             "event": record.getMessage(),
         }

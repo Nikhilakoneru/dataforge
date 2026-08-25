@@ -65,9 +65,19 @@ def test_load_rules_missing_field_key_raises(tmp_path):
 
 def test_load_rules_unknown_key_raises(tmp_path):
     with pytest.raises(RuleParseError):
-        load_rules(write_rules(tmp_path, "rules:\n  - field: name\n    requird: true\n"))
+        load_rules(
+            write_rules(tmp_path, "rules:\n  - field: name\n    requird: true\n")
+        )
 
 
 def test_load_rules_bad_regex_raises(tmp_path):
     with pytest.raises(RuleParseError):
         load_rules(write_rules(tmp_path, "rules:\n  - field: name\n    pattern: '['\n"))
+
+
+def test_rules_key_that_is_not_a_list_raises(tmp_path):
+    rules_file = tmp_path / "rules.yaml"
+    rules_file.write_text("rules: just-a-string\n")
+
+    with pytest.raises(RuleParseError):
+        load_rules(str(rules_file))

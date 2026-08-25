@@ -4,8 +4,6 @@ A command-line tool for validating CSV files using validation rules written in Y
 
 I built DataForge to learn more about file parsing, validation pipelines, testing, and building Python CLI applications. Instead of hardcoding validation logic, the validation rules are defined in a YAML file, making it easy to reuse the same validation engine for different CSV datasets.
 
-The project is still a work in progress, but the features below are already implemented and working.
-
 ---
 
 ## Rules file
@@ -120,31 +118,124 @@ Validation results are written to **stdout**. If DataForge can't run, the error 
 
 ---
 
-## Current state
+## What's implemented
 
-At this point the project can:
-
-- Load CSV files
+- Load CSV files (UTF-8, with or without a BOM)
 - Parse validation rules from YAML
-- Validate rows using multiple rule types
-- Generate validation reports
-- Output results as text or JSON
-- Emit structured JSON logs for debugging a run
-- Run from the command line
+- Six rule types: `type`, `required`, `min`, `max`, `pattern`, `allowed`
+- Row-by-row validation with a report of every failure
+- Output as human-readable text or JSON
+- Structured JSON logs on stderr for debugging a run
+- Exit codes that distinguish invalid data from a broken setup
 
-I'm still working on improving the project, but the complete validation pipeline is now functional end to end.
+The validation pipeline works end to end. What's *not* there is listed under [current limitations](#current-limitations) further down.
 
 ---
 
-## Development
+## Setup
 
-Python 3.12
+DataForge needs **Python 3.12 or newer**. This matters more than it sounds: the `python3` that ships with macOS is 3.9, and installing with it fails immediately, so create an environment with an explicit version rather than relying on the system interpreter.
+
+With conda:
 
 ```bash
 conda create -n dataforge-dev python=3.12
 conda activate dataforge-dev
-
 pip install -e ".[dev]"
-
-pytest
 ```
+
+Or with venv, pointing at a 3.12 interpreter you already have:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Either way, `pip install -e ".[dev]"` installs the package plus the test and lint tools. After that `dataforge` is on your PATH:
+
+```bash
+dataforge --version
+```
+
+Runtime dependencies are `click`, `pydantic` and `pyyaml`. Everything else — pytest, hypothesis, ruff, mypy, coverage — is dev-only.
+
+---
+
+## Testing
+
+```bash
+pytest                                    # the suite
+pytest --cov=dataforge                    # with coverage
+ruff check . && ruff format --check .      # lint and formatting
+mypy dataforge tests                      # type checking
+```
+
+The suite is 114 tests and currently covers 100% of the package. Coverage is configured to fail below 90%, which leaves a little room for a genuinely awkward branch without letting it quietly slide.
+
+Some of the validator tests use [Hypothesis](https://hypothesis.readthedocs.io/) to generate inputs instead of listing them by hand — useful for checks like "every integer should pass the integer type rule", where I'd otherwise be guessing which values to try.
+
+All four checks run on GitHub Actions for every push and pull request (`.github/workflows/ci.yml`). CI installs from `pyproject.toml` exactly the way the instructions above do, so a green build means a clean clone works and not just my laptop.
+
+---
+
+## Performance
+
+There's a benchmark script that generates a large CSV from a fixed random seed and times the load-plus-validate path:
+
+```bash
+python scripts/benchmark.py              # 100,000 rows by default
+python scripts/benchmark.py --rows 500000
+```
+
+On my machine — Apple M5, macOS 26.5, Python 3.12.13 — 100,000 rows across 5 rules takes a little over **0.2 seconds, so roughly 460,000 rows/second**, on a 4.8 MB input where about 10% of rows are invalid. Repeated runs land between 0.21 and 0.22 s, which is why I'd round it rather than quote a precise figure.
+
+That number is from this specific script on this specific laptop, so treat it as a rough sense of scale rather than a benchmark result that means anything on your hardware. The seed is fixed so repeated runs are comparable, and the script reports the fastest of three runs, because a slower run usually means something else was using the CPU.
+
+Worth being clear about the main limitation behind it: `load_csv` reads the entire file into a list of dicts before validating anything, so peak memory scales with file size. It's fine for the file sizes I had in mind, but it is not a streaming implementation.
+
+---
+
+## Current limitations
+
+Things I know are missing or rough, written down rather than hidden:
+
+- **The whole file is loaded into memory.** No streaming, so a file much larger than available RAM won't work.
+- **Rules apply to single cells.** There's no way to express a relationship between two columns, like "`end_date` must be after `start_date`".
+- **One rules file, one CSV per run.** No globbing or directory mode.
+- **Errors report the row and a message, not a structured field/rule pair.** Fine for reading, less convenient for a script that wants to branch on the rule that failed.
+- **Numeric bounds display as floats.** `max: 120` prints as `120.0`, because `min`/`max` are typed as floats internally. Cosmetic, and tracked as an issue.
+- **Passing a directory instead of a file** raises `IsADirectoryError` rather than a clean `LoaderError`.
+- **Only UTF-8 input.** A BOM is handled (Excel writes one), but other encodings aren't.
+
+---
+
+## Notes on the build
+
+A few things I'd point at if someone asked what I actually learned here.
+
+The exception hierarchy in `exceptions.py` looked pointless when I wrote it — four empty classes. It paid off in the CLI, where a single `except DataForgeError` handles every loader and parser failure, including ones I haven't written yet.
+
+Truncation via `--max-errors` lives in the formatter, not in report building, so the counts always describe the whole file even when the list shown is shorter. There's a test that exists specifically to stop someone "optimising" that by truncating earlier.
+
+The bug I'm most glad I caught was a rule naming a column that didn't exist. It silently skipped every check and reported the file as valid — a validator quietly not validating while still saying "no errors" is worse than one that crashes.
+
+---
+
+## Project layout
+
+```
+dataforge/
+  loaders.py      read CSV files
+  rules.py        parse and validate the YAML rules file
+  validators.py   the individual checks, plus the registry
+  report.py       collect results, format as text or JSON
+  logs.py         structured JSON logging
+  cli.py          command line entry point
+  exceptions.py   error hierarchy
+tests/            one test module per source module
+examples/         sample CSV and rules file
+scripts/          benchmark
+```
+
+The data flows in one direction: CSV and rules go in through the loader and parser, the validators check each row, the report collects what they found, and the CLI decides what to print and which exit code to use. Nothing in the lower layers imports the CLI, so the whole pipeline can be used as a library without it.

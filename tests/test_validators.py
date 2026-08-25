@@ -235,3 +235,20 @@ def test_missing_rule_fields_treats_empty_header_as_everything_missing():
     rules = [Rule(field="name"), Rule(field="age")]
 
     assert missing_rule_fields([], rules) == ["name", "age"]
+
+
+def test_float_type_rejects_non_numeric_value():
+    rule = Rule(field="score", type="float")
+    errors = check_type({"score": "high"}, rule)
+
+    assert errors == ["score should be a number, got 'high'"]
+
+
+def test_float_type_accepts_a_decimal():
+    rule = Rule(field="score", type="float")
+    assert check_type({"score": "3.5"}, rule) == []
+
+
+def test_float_type_accepts_an_integer_string():
+    rule = Rule(field="score", type="float")
+    assert check_type({"score": "3"}, rule) == []

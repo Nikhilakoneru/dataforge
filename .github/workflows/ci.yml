@@ -1,0 +1,51 @@
+# Runs the same four checks I run locally: lint, format, types, tests.
+# Nothing here depends on my machine — the job installs the project from
+# pyproject.toml the same way the README tells a new contributor to.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project and dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format (ruff)
+        run: ruff format --check .
+
+      - name: Types (mypy)
+        run: mypy dataforge tests
+
+      - name: Tests and coverage
+        run: pytest --cov=dataforge --cov-report=term-missing
+
+      - name: Confirm the CLI is actually installed and runnable
+        run: |
+          dataforge --version
+          # The sample data is deliberately invalid, so exit code 1 is
+          # the correct result here. Anything else means the entry point
+          # or the pipeline is broken.
+          if dataforge validate examples/sample_data.csv \
+               --rules examples/sample_rules.yaml; then
+            echo "expected a non-zero exit for the invalid sample data"
+            exit 1
+          fi
