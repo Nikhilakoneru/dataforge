@@ -72,3 +72,32 @@ def test_read_header_invalid_encoding_raises_loader_error(tmp_path):
 
     with pytest.raises(LoaderError):
         read_header(str(bad_file))
+
+
+# A UTF-8 BOM is what Excel writes when it exports CSV. Without
+# utf-8-sig the first column parses as "\ufeffname", so every rule for
+# that column silently fails to match — the bug this pair of tests
+# exists to prevent coming back.
+BOM = b"\xef\xbb\xbf"
+
+
+def test_load_csv_strips_byte_order_mark(tmp_path):
+    csv_file = tmp_path / "excel_export.csv"
+    csv_file.write_bytes(BOM + b"name,age\nAlice,30\n")
+
+    assert load_csv(str(csv_file)) == [{"name": "Alice", "age": "30"}]
+
+
+def test_read_header_strips_byte_order_mark(tmp_path):
+    csv_file = tmp_path / "excel_export.csv"
+    csv_file.write_bytes(BOM + b"name,age\nAlice,30\n")
+
+    assert read_header(str(csv_file)) == ["name", "age"]
+
+
+def test_files_without_a_bom_are_unaffected(tmp_path):
+    csv_file = tmp_path / "plain.csv"
+    csv_file.write_bytes(b"name,age\nAlice,30\n")
+
+    assert read_header(str(csv_file)) == ["name", "age"]
+    assert load_csv(str(csv_file)) == [{"name": "Alice", "age": "30"}]

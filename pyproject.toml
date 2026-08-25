@@ -30,3 +30,28 @@ dataforge = "dataforge.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["dataforge*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["dataforge"]
+
+[tool.coverage.report]
+# The suite covers every line today. Failing under 90 leaves room for a
+# genuinely hard-to-reach branch without letting coverage quietly rot.
+fail_under = 90
+show_missing = true
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[[tool.mypy.overrides]]
+# strict applies to the package itself. The test suite isn't annotated
+# — typing every fixture and helper would add noise without catching
+# anything the tests don't already catch by failing.
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false

@@ -1,10 +1,16 @@
 # DataForge
 
-A command-line tool for validating CSV files using validation rules written in YAML.
+DataForge is a command-line tool for validating CSV files using rules defined in a YAML file.
 
-I built DataForge to learn more about file parsing, validation pipelines, testing, and building Python CLI applications. Instead of hardcoding validation logic, the validation rules are defined in a YAML file, making it easy to reuse the same validation engine for different CSV datasets.
+I built this project to learn more about file parsing, validation pipelines, testing, and designing Python command-line applications. Instead of hardcoding validation logic, the validation rules are written in a YAML file so the same validator can be reused for different CSV datasets.
 
-The project is still a work in progress, but the features below are already implemented and working.
+At the moment, DataForge can:
+
+- Load CSV files
+- Parse validation rules from YAML
+- Validate each row against those rules
+- Report errors in either text or JSON format
+- Run everything through a command-line interface
 
 ---
 
@@ -27,7 +33,7 @@ rules:
 Supported keys:
 
 | Key | Description |
-| --- | --- |
+|------|-------------|
 | `field` | Column name to validate (required) |
 | `type` | `string`, `integer`, `float`, or `boolean` |
 | `required` | Whether the value must exist |
@@ -36,31 +42,31 @@ Supported keys:
 | `pattern` | Regular expression the value must match |
 | `allowed` | List of allowed values |
 
-There are three design decisions worth mentioning.
+A few design decisions are worth mentioning.
 
-If a key is misspelled (for example, `requird`), DataForge raises an error instead of silently ignoring it. I felt it was better to fail immediately than let someone think a validation rule was running when it actually wasn't.
+If a rule contains a misspelled key (for example, `requird`), parsing fails immediately instead of silently ignoring it. I felt that failing early makes configuration mistakes much easier to notice.
 
-An empty rules file also raises an error. Reporting that a file is "valid" when no validation rules were executed didn't seem useful, so I chose to treat that as a configuration error.
+An empty rules file is also treated as an error. Reporting that a file is "valid" when no validation rules actually ran didn't seem useful, so DataForge refuses to continue instead.
 
-For the same reason, if a rule names a column that isn't in the CSV header, DataForge refuses to run instead of validating. This one was actually a bug I found while reviewing the CLI. A missing column looked identical to a blank cell internally, so a typo like `field: naem` skipped every check and the file came back clean. A validator that quietly stops validating but still reports success is worse than one that crashes, so it now fails with exit code 2 and names the columns it couldn't find.
+While testing the CLI I also found another edge case: if a rule references a column that doesn't exist in the CSV, validation now stops with a clear error instead of silently skipping every check for that column.
 
 ---
 
 ## Usage
 
-Validate a CSV file with a rules file:
+Validate a CSV file using a rules file:
 
 ```bash
 dataforge validate data.csv --rules rules.yaml
 ```
 
-A sample dataset and rules file are included in the `examples/` directory:
+A sample dataset and rules file are included in the `examples/` directory.
 
 ```bash
 dataforge validate examples/sample_data.csv --rules examples/sample_rules.yaml
 ```
 
-The sample data intentionally contains a few validation errors, so running the command prints something like:
+The sample dataset intentionally contains validation errors, so running the command prints something like:
 
 ```text
 row 2: age should be at most 120.0, got 200
@@ -70,81 +76,213 @@ row 4: age should be an integer, got 'abc'
 3 errors in 3 of 4 rows
 ```
 
-When the file passes validation, the output is simply:
+When the file passes validation:
 
 ```text
 4 rows checked, no errors
 ```
 
-Row numbers refer only to the data rows, so row 1 is the first row below the CSV header. That's usually the row you'll look for when opening the file in Excel or another spreadsheet application.
+Row numbers refer only to data rows. Row 1 is the first row after the CSV header, which makes it easier to locate the problem in spreadsheet applications like Excel.
 
 ---
 
 ## Command-line options
 
 | Option | Description |
-| --- | --- |
+|------|-------------|
 | `-r`, `--rules PATH` | Path to the YAML rules file (required) |
-| `-f`, `--format text\|json` | Output format (`text` by default) |
-| `--max-errors N` | Display only the first **N** errors while still counting every error found |
+| `-f`, `--format text\|json` | Output format (default: `text`) |
+| `--max-errors N` | Display only the first N errors while still counting every error found |
 | `-q`, `--quiet` | Print nothing when validation succeeds |
-| `--log-level LEVEL` | Emit JSON diagnostic logs to stderr (`off` by default) |
+| `--log-level LEVEL` | Print diagnostic logs to stderr |
 
-Using `--format json` produces the same validation results as structured JSON, making it easier to integrate DataForge into scripts or automation.
-
-`--log-level` is a separate thing from `--format json`, and it took me a moment to be clear about why. `--format json` is the *result* — it goes to stdout and it's what a calling script reads. `--log-level` produces *diagnostic logs* about the run itself (which files were opened, how many rules loaded, how long validation took), and those go to stderr and are off unless you ask for them.
-
-Keeping them on different streams is what makes this work:
+Using JSON output:
 
 ```bash
-dataforge validate data.csv -r rules.yaml -f json --log-level info > results.json
+dataforge validate data.csv --rules rules.yaml -f json
 ```
 
-`results.json` is still valid JSON, because the log lines went to stderr instead of being mixed into it.
+The validation results are written to stdout, making them easy to use from scripts or automation.
 
-The logs deliberately contain only counts, durations, file paths and field names — never a value read out of the CSV. Logs usually end up somewhere with much wider access than the data file itself, so a validator that logged cell contents would quietly turn a private CSV into a widely readable one. There's a test that checks this.
+Diagnostic logs, when enabled, are written to stderr so they never interfere with JSON output.
 
 ---
 
 ## Exit codes
 
 | Code | Meaning |
-| --- | --- |
-| `0` | Validation completed successfully with no errors |
-| `1` | Validation completed, but the data failed one or more rules |
-| `2` | DataForge couldn't run because of a setup or configuration problem |
+|------|---------|
+| `0` | Validation completed successfully |
+| `1` | The CSV loaded correctly, but one or more validation rules failed |
+| `2` | DataForge couldn't run because of a configuration or setup problem |
 
-Exit codes **1** and **2** are intentionally different. Exit code **1** means the CSV data failed validation, while exit code **2** means DataForge couldn't run at all (for example, because the rules file couldn't be loaded, or because a rule referred to a column the CSV doesn't have). Keeping them separate makes it easier for scripts and CI pipelines to handle each situation appropriately.
-
-Validation results are written to **stdout**. If DataForge can't run, the error message is written to **stderr** instead.
+Separating exit codes `1` and `2` lets scripts distinguish between invalid data and problems with the validation setup itself.
 
 ---
 
-## Current state
+## Features
 
-At this point the project can:
+Current functionality includes:
 
-- Load CSV files
-- Parse validation rules from YAML
-- Validate rows using multiple rule types
-- Generate validation reports
-- Output results as text or JSON
-- Emit structured JSON logs for debugging a run
-- Run from the command line
-
-I'm still working on improving the project, but the complete validation pipeline is now functional end to end.
+- CSV loading (including UTF-8 BOM support)
+- YAML rule parsing
+- Six validation rules:
+  - `required`
+  - `type`
+  - `min`
+  - `max`
+  - `pattern`
+  - `allowed`
+- Validation reports in both text and JSON
+- Structured diagnostic logging
+- Command-line interface
+- Comprehensive unit tests
 
 ---
 
-## Development
+## Setup
 
-Python 3.12
+DataForge requires **Python 3.12 or newer**.
+
+Using Conda:
 
 ```bash
 conda create -n dataforge-dev python=3.12
 conda activate dataforge-dev
-
 pip install -e ".[dev]"
-
-pytest
 ```
+
+Or using a virtual environment:
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Verify the installation:
+
+```bash
+dataforge --version
+```
+
+Runtime dependencies:
+
+- click
+- pydantic
+- PyYAML
+
+Development tools include:
+
+- pytest
+- hypothesis
+- ruff
+- mypy
+- coverage
+
+---
+
+## Running tests
+
+```bash
+pytest
+
+pytest --cov=dataforge
+
+ruff check . && ruff format --check .
+
+mypy dataforge tests
+```
+
+The project currently contains:
+
+- 114 unit tests
+- 100% statement coverage
+- mypy strict mode
+- Ruff formatting and linting
+- GitHub Actions CI
+
+Some validator tests use Hypothesis to generate random test cases rather than relying only on hand-written examples.
+
+---
+
+## Performance
+
+A small benchmark script is included:
+
+```bash
+python scripts/benchmark.py
+```
+
+On my laptop (Apple M5, Python 3.12), validating a CSV with 100,000 rows takes about **0.22 seconds**, which works out to roughly **460,000 rows per second**.
+
+These numbers are only meant as a rough reference since they'll vary between machines.
+
+At the moment, the loader reads the entire CSV into memory before validation begins, so memory usage grows with file size.
+
+---
+
+## Current limitations
+
+There are still a few things I'd improve in the future.
+
+- The whole CSV is loaded into memory before validation.
+- Rules only validate one column at a time.
+- One rules file validates one CSV.
+- Errors are returned as text instead of structured objects.
+- Numeric bounds display as `120.0` instead of `120`.
+- Passing a directory reports an `IsADirectoryError`.
+- Only UTF-8 input is supported.
+
+---
+
+## What I learned
+
+This project taught me much more than just writing validation functions.
+
+One lesson was that small design decisions become much more useful as a project grows. For example, I originally wasn't convinced the custom exception hierarchy was necessary, but once I built the CLI it made error handling much cleaner.
+
+I also learned that reporting errors is just as important as finding them. Features like row numbering, exit codes, JSON output, and separate stdout/stderr streams don't change how validation works, but they make the tool much easier to use in scripts and automation.
+
+Probably the most interesting bug I found happened while testing the CLI. If a rule referenced a column that didn't exist, validation quietly skipped every check and incorrectly reported that the file was valid. Fixing that made me appreciate how important edge cases are when building developer tools.
+
+---
+
+## Project structure
+
+```
+dataforge/
+├── loaders.py        # Read CSV files
+├── rules.py          # Parse YAML rules
+├── validators.py     # Validation functions
+├── report.py         # Build validation reports
+├── logs.py           # Structured logging
+├── cli.py            # Command-line interface
+├── exceptions.py     # Custom exceptions
+tests/                # Unit tests
+examples/             # Sample CSV and YAML files
+scripts/              # Benchmark script
+```
+
+The project follows a simple pipeline:
+
+```
+CSV + Rules
+      │
+      ▼
+ Loaders
+      │
+      ▼
+ Rule Parser
+      │
+      ▼
+ Validators
+      │
+      ▼
+ Report Builder
+      │
+      ▼
+ CLI Output
+```
+
+Keeping each stage separate made it easier to test components independently and add new functionality without changing the rest of the pipeline.

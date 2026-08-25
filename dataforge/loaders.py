@@ -10,6 +10,12 @@ def load_csv(path: str) -> list[dict[str, str]]:
     value for that column. All values come back as strings — type
     conversion is the validators' job, not the loader's.
 
+    Read with utf-8-sig rather than utf-8 so that a leading byte order
+    mark is stripped. Excel writes one when it exports CSV, and without
+    this the first column comes back named U+FEFF followed by "name"
+    instead of "name", which makes every rule for that column fail to
+    match. The codec is identical to utf-8 for files without a BOM.
+
     Raises:
         LoaderError: if the file doesn't exist or can't be read as CSV.
 
@@ -19,7 +25,7 @@ def load_csv(path: str) -> list[dict[str, str]]:
         a known, accepted limitation for this project's scope.
     """
     try:
-        with open(path, "r", newline="", encoding="utf-8") as f:
+        with open(path, "r", newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             return list(reader)
     except FileNotFoundError as e:
@@ -44,7 +50,7 @@ def read_header(path: str) -> list[str]:
         LoaderError: if the file doesn't exist or can't be read as CSV.
     """
     try:
-        with open(path, "r", newline="", encoding="utf-8") as f:
+        with open(path, "r", newline="", encoding="utf-8-sig") as f:
             # csv.reader, not DictReader — DictReader would parse every
             # row into a dict just to hand back .fieldnames.
             return next(csv.reader(f), [])
