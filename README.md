@@ -88,8 +88,21 @@ Row numbers refer only to the data rows, so row 1 is the first row below the CSV
 | `-f`, `--format text\|json` | Output format (`text` by default) |
 | `--max-errors N` | Display only the first **N** errors while still counting every error found |
 | `-q`, `--quiet` | Print nothing when validation succeeds |
+| `--log-level LEVEL` | Emit JSON diagnostic logs to stderr (`off` by default) |
 
 Using `--format json` produces the same validation results as structured JSON, making it easier to integrate DataForge into scripts or automation.
+
+`--log-level` is a separate thing from `--format json`, and it took me a moment to be clear about why. `--format json` is the *result* — it goes to stdout and it's what a calling script reads. `--log-level` produces *diagnostic logs* about the run itself (which files were opened, how many rules loaded, how long validation took), and those go to stderr and are off unless you ask for them.
+
+Keeping them on different streams is what makes this work:
+
+```bash
+dataforge validate data.csv -r rules.yaml -f json --log-level info > results.json
+```
+
+`results.json` is still valid JSON, because the log lines went to stderr instead of being mixed into it.
+
+The logs deliberately contain only counts, durations, file paths and field names — never a value read out of the CSV. Logs usually end up somewhere with much wider access than the data file itself, so a validator that logged cell contents would quietly turn a private CSV into a widely readable one. There's a test that checks this.
 
 ---
 
@@ -116,6 +129,7 @@ At this point the project can:
 - Validate rows using multiple rule types
 - Generate validation reports
 - Output results as text or JSON
+- Emit structured JSON logs for debugging a run
 - Run from the command line
 
 I'm still working on improving the project, but the complete validation pipeline is now functional end to end.
